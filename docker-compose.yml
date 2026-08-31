@@ -1,0 +1,71 @@
+version: '3.9'
+
+# ============================================================
+# PRAXISFLOW AI – Docker Compose (Lokale Entwicklung)
+# PILOT: Ausschliesslich synthetische Testdaten
+# ============================================================
+
+services:
+  # ----------------------------------------------------------
+  # PostgreSQL Datenbank
+  # ----------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: praxisflow-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: praxisflow_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_local_dev  # Nur lokal!
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # Next.js App
+  # ----------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: praxisflow-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres_local_dev@db:5432/praxisflow_dev
+      NODE_ENV: development
+      PILOT_MODE: "true"
+    env_file:
+      - .env.local
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+
+  # ----------------------------------------------------------
+  # Adminer (Datenbank-Admin UI – NUR Entwicklung!)
+  # ----------------------------------------------------------
+  adminer:
+    image: adminer:latest
+    container_name: praxisflow-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    profiles:
+      - dev-tools  # Nur mit: docker compose --profile dev-tools up
+
+volumes:
+  pgdata:
+    driver: local

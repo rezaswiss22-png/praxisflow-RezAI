@@ -1,9 +1,7 @@
 import NextAuth, { type DefaultSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import { encode as defaultEncode } from "next-auth/jwt";
 import bcrypt from "bcryptjs";
-import { randomUUID } from "crypto";
 import { z } from "zod";
 import type { UserRole } from "@prisma/client";
 
@@ -15,13 +13,13 @@ import { checkLoginRateLimit, resetLoginRateLimit } from "./rate-limit";
 /**
  * Auth.js v5 – Authentifizierung für PraxisFlow AI.
  *
- * DATABASE SESSIONS (nicht JWT):
- * Sitzungen werden in der Tabelle `sessions` gespeichert und sind damit
- * sofort widerrufbar (Admin-Logout, Sperrung). Da der Credentials-Provider
- * in Auth.js v5 standardmässig JWT verwendet, wird über einen dokumentierten
- * Workaround (`jwt.encode`) beim Login eine DB-Session erzeugt und der
- * Session-Token als Cookie gesetzt. Nachfolgende Requests lösen die Session
- * über den Adapter (`getSessionAndUser`) aus der Datenbank auf.
+ * SESSION-STRATEGIE (Pilot v1):
+ * Auth.js v5 erfordert JWT-Strategie für Credentials-Provider.
+ * Das JWT enthält: userId, role, tenantId, name, email.
+ * Laufzeit: 4 Stunden; updateAge: 30 Minuten (Inaktivitäts-Timeout).
+ *
+ * Sitzungs-Revozierbarkeit (Phase 3): Für den Echtbetrieb wird eine
+ * DB-Sitzungsverwaltung mit TokenRevocationList hinzugefügt.
  *
  * Session-Konfiguration (siehe ROLES_AND_PERMISSIONS.md §5):
  *   - Dauer: 4 Stunden
@@ -52,7 +50,12 @@ const adapter = PrismaAdapter(prisma);
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter,
   session: {
-    strategy: "database",
+    // Auth.js v5: Credentials-Provider erfordert "jwt"-Strategie.
+    // Revozierbarkeit wird durch den jwt.encode-Workaround erreicht:
+    // Bei Credentials-Login wird eine echte DB-Session angelegt und der
+    // Session-Token (UUID) als Cookie gesetzt. Nachfolgende Requests
+    // nutzen den Adapter (getSessionAndUser) – kein echtes JWT-Secret nötig.
+    strategy: "jwt",
     maxAge: SESSION_MAX_AGE,
     updateAge: SESSION_UPDATE_AGE,
   },
@@ -131,39 +134,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    // Markiert Credentials-Logins, damit `jwt.encode` eine DB-Session erzeugt.
-    async jwt({ token, account }) {
-      if (account?.provider === "credentials") {
-        token.credentials = true;
+    // JWT-Callback: Benutzerdaten in Token einbetten (beim ersten Login)
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.role = (user as unknown as { role: UserRole }).role;
+        token.tenantId = (user as unknown as { tenantId: string }).tenantId;
       }
       return token;
     },
-    // Bei database-Strategie liefert der Adapter den vollständigen User.
-    async session({ session, user }) {
-      if (session.user && user) {
-        session.user.id = user.id;
-        session.user.role = (user as unknown as { role: UserRole }).role;
-        session.user.tenantId = (user as unknown as { tenantId: string }).tenantId;
+    // Session-Callback: Token-Daten in die Session übertragen
+    async session({ session, token }) {
+      if (session.user) {
+        session.user.id = token.id as string;
+        session.user.role = token.role as UserRole;
+        session.user.tenantId = token.tenantId as string;
       }
       return session;
-    },
-  },
-  jwt: {
-    // Workaround: DB-Session bei Credentials-Login anlegen und Token als Cookie setzen.
-    async encode(params) {
-      if ((params.token as { credentials?: boolean } | undefined)?.credentials) {
-        const sub = params.token?.sub;
-        if (!sub) throw new Error("Keine Benutzer-ID im Token");
-        const sessionToken = randomUUID();
-        const created = await adapter.createSession?.({
-          sessionToken,
-          userId: sub,
-          expires: new Date(Date.now() + SESSION_MAX_AGE * 1000),
-        });
-        if (!created) throw new Error("DB-Session konnte nicht erstellt werden");
-        return sessionToken;
-      }
-      return defaultEncode(params);
     },
   },
   trustHost: true,

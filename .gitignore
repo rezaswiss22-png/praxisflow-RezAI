@@ -1,0 +1,121 @@
+# ============================================================
+# PRAXISFLOW AI – .gitignore
+# SICHERHEITSHINWEIS: Niemals Secrets, Tokens, Passwörter
+# oder echte Patientendaten committen!
+# ============================================================
+
+# ============================================================
+# SECRETS & UMGEBUNGSVARIABLEN (NIEMALS COMMITTEN!)
+# ============================================================
+.env
+.env.local
+.env.development
+.env.development.local
+.env.test
+.env.test.local
+.env.production
+.env.production.local
+.env.staging
+
+# Zertifikate und Schlüssel
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+*.jks
+
+# ============================================================
+# ABHÄNGIGKEITEN
+# ============================================================
+node_modules/
+.pnp
+.pnp.js
+
+# ============================================================
+# NEXT.JS BUILD
+# ============================================================
+.next/
+out/
+build/
+dist/
+
+# ============================================================
+# DATENBANK
+# ============================================================
+# SQLite (falls lokal genutzt)
+*.db
+*.sqlite
+*.sqlite3
+
+# Datenbankdumps (könnten Daten enthalten)
+*.sql.gz
+*.dump
+*.backup
+
+# ============================================================
+# LOGS (KÖNNEN PII ENTHALTEN)
+# ============================================================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ============================================================
+# UPLOADS & TEMPORÄRE DATEIEN
+# ============================================================
+uploads/
+tmp/
+temp/
+.tmp/
+
+# ============================================================
+# TESTING
+# ============================================================
+coverage/
+.nyc_output
+playwright-report/
+playwright/.cache/
+test-results/
+
+# ============================================================
+# IDE & EDITOR
+# ============================================================
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Aber Empfehlungen committen:
+!.vscode/extensions.json
+!.vscode/launch.json
+
+# ============================================================
+# CACHE
+# ============================================================
+.cache/
+.parcel-cache/
+.eslintcache
+.turbo/
+.vercel
+
+# ============================================================
+# PRISMA
+# ============================================================
+# Generierter Prisma-Client (wird bei npm install neu generiert)
+# prisma/generated/  # Falls custom output path verwendet wird
+
+# ============================================================
+# DOCKER
+# ============================================================
+# Lokale Docker-Override-Dateien können Secrets enthalten
+docker-compose.override.yml
+docker-compose.local.yml
+
+# ============================================================
+# DEBUGGING
+# ============================================================
+.node_repl_history

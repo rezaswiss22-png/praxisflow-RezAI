@@ -37,27 +37,35 @@
 
 ## Lokale Installation (Docker) – Empfohlen
 
+Der einfachste Weg. Datenbank und App laufen in Containern; **Migrationen und
+synthetische Seed-Daten werden beim ersten Start automatisch angewendet**
+(siehe `docker-entrypoint.sh`, gesteuert über `RUN_SEED=true` in
+`docker-compose.yml`).
+
 ```bash
 # 1. Repository klonen
 git clone https://github.com/rezaswiss22-png/praxisflow-RezAI.git
 cd praxisflow-RezAI
 
-# 2. Umgebungsvariablen konfigurieren
-cp .env.example .env.local
-# .env.local mit sicheren Werten befüllen (siehe Abschnitt Umgebungsvariablen)
+# 2. Container bauen und starten (Datenbank + App)
+#    Beim ersten Start: automatische Migration + Seed
+docker compose up --build
 
-# 3. Container starten (Datenbank + App)
-docker compose up -d
-
-# 4. Datenbankmigrationen ausführen
-docker compose exec app npx prisma migrate deploy
-
-# 5. Synthetische Testdaten laden
-docker compose exec app npm run db:seed
-
-# 6. App öffnen
-open http://localhost:3000
+# 3. App öffnen
+#    http://localhost:3000
 ```
+
+Optional mit Datenbank-Admin-UI (Adminer auf http://localhost:8080):
+
+```bash
+docker compose --profile dev-tools up --build
+```
+
+> Die in `docker-compose.yml` hinterlegten Werte für `AUTH_SECRET`,
+> Datenbankpasswort usw. sind **nur lokale Pilot-Werte** und müssen für einen
+> echten Betrieb ersetzt werden. Für den lokalen Pilot ist keine weitere
+> Konfiguration nötig – eine `.env`-Datei wird für den Docker-Weg nicht
+> benötigt.
 
 ---
 
@@ -72,52 +80,54 @@ cd praxisflow-RezAI
 npm install
 
 # 3. Umgebungsvariablen konfigurieren
-cp .env.example .env.local
+cp .env.example .env
+# .env bearbeiten: DATABASE_URL, AUTH_SECRET und AUTH_URL setzen
+#   AUTH_SECRET erzeugen z. B. mit:  openssl rand -base64 32
 
-# 4. PostgreSQL starten und DATABASE_URL in .env.local setzen
+# 4. PostgreSQL starten und DATABASE_URL in .env eintragen
+#    Beispiel: postgresql://praxisflow:passwort@localhost:5432/praxisflow_dev
 
-# 5. Datenbankmigrationen ausführen
+# 5. Datenbankmigrationen ausführen (erzeugt Schema + Prisma Client)
 npx prisma migrate dev
 
-# 6. Prisma Client generieren
-npx prisma generate
-
-# 7. Synthetische Testdaten laden
+# 6. Synthetische Testdaten laden
 npm run db:seed
 
-# 8. Entwicklungsserver starten
+# 7. Entwicklungsserver starten
 npm run dev
 
-# 9. App öffnen
-open http://localhost:3000
+# 8. App öffnen
+#    http://localhost:3000
 ```
 
 ---
 
 ## Testdaten laden
 
+Das Seed-Skript ist **idempotent** (nutzt `upsert`) und lädt einen vollständigen,
+rein synthetischen Datenbestand: Organisation, Standort, 5 Benutzer (alle Rollen),
+30 Patienten (inkl. Dubletten), 50 Eingänge, Vorgänge, Aufgaben, Termine,
+Rückrufe, Audit-Logs, Kategorien, Kanäle sowie 7 Mock-Adapter.
+
 ```bash
-# Alle synthetischen Testdaten laden (30 Patienten, 50 Eingänge, alle Rollen)
+# Alle synthetischen Testdaten laden
 npm run db:seed
 
-# Datenbank zurücksetzen und neu befüllen
-npm run db:reset
-
-# Nur Benutzer und Rollen erstellen
-npm run db:seed:users
+# Schema + Daten komplett zurücksetzen und neu aufbauen
+npx prisma migrate reset   # führt danach automatisch den Seed aus
 ```
 
 ---
 
 ## Testkonten (Pilot – synthetische Daten)
 
-| Rolle | E-Mail | Passwort | Beschreibung |
-|---|---|---|---|
-| Arzt | dr.mustermann@pilot.local | Pilot2026! | Dr. Max Mustermann |
-| MPA | mpa.muster@pilot.local | Pilot2026! | Muster MPA |
-| Praxisleitung | leitung@pilot.local | Pilot2026! | Praxisleitung |
-| Personal | personal@pilot.local | Pilot2026! | Weiteres Personal |
-| Sysadmin | admin@pilot.local | Pilot2026! | Systemadministrator |
+| Rolle | E-Mail | Passwort |
+|---|---|---|
+| Arzt (ARZT) | dr.mueller@praxisflow.test | Pilot2026! |
+| MPA / Empfang (MPA_EMPFANG) | empfang@praxisflow.test | Pilot2026! |
+| Praxisleitung (PRAXISLEITUNG) | leitung@praxisflow.test | Pilot2026! |
+| Personal (PERSONAL) | personal@praxisflow.test | Pilot2026! |
+| Systemadministration (SYSADMIN) | admin@praxisflow.test | Pilot2026! |
 
 > ⚠️ Diese Konten existieren **nur in der Pilotumgebung** mit synthetischen Daten.
 
@@ -128,33 +138,38 @@ npm run db:seed:users
 ```
 praxisflow-RezAI/
 ├── src/
-│   ├── app/                    # Next.js App Router
-│   │   ├── (auth)/             # Login, Session
-│   │   ├── (app)/              # Geschützte Bereiche
-│   │   └── api/                # API-Routen
+│   ├── app/                    # Next.js App Router (Seiten & API)
+│   │   ├── (dashboard)/        # Geschützte Bereiche (Dashboard, Eingang,
+│   │   │                       #   Vorgänge, Aufgaben, Patienten, Kalender,
+│   │   │                       #   Dokumente, Auswertungen, Einstellungen)
+│   │   ├── auth/login/         # Login
+│   │   └── api/trpc/           # tRPC API-Route
 │   ├── server/                 # Server-only Code
-│   │   ├── auth/               # Session & RBAC
-│   │   ├── db/                 # Prisma Client
-│   │   ├── services/           # Geschäftslogik
-│   │   ├── adapters/           # [MOCK] Integrationsadapter
-│   │   └── ai/                 # KI-Assistenz (regelbasiert)
-│   ├── components/             # React-Komponenten
-│   └── lib/                    # Geteilte Utilities
+│   │   ├── routers/            # tRPC-Router (pro Domäne)
+│   │   ├── trpc.ts             # tRPC-Setup, geschützte Procedures
+│   │   ├── context.ts          # Request-Context (Session, Prisma)
+│   │   └── audit.ts            # Audit-Logging
+│   ├── lib/
+│   │   ├── adapters/           # [MOCK] Integrationsadapter (ESPAS, OneDoc,
+│   │   │                       #   HIN, E-Mail, RocketHealth, Kalender, Labor)
+│   │   ├── ai/                 # KI-Assistenz (regelbasiert, transparent)
+│   │   ├── auth/               # Auth.js-Konfiguration (DB-Sessions)
+│   │   ├── permissions.ts      # RBAC (Rollen & Rechte)
+│   │   ├── trpc/               # tRPC React-Client + Provider
+│   │   └── roles.ts            # Rollen-Bezeichnungen
+│   └── components/
+│       ├── ui/                 # PilotBanner, MockBadge, StatusBadge (Ampel),
+│       │                       #   AiSuggestionCard, ConfirmationDialog, DataTable
+│       └── layout/             # Sidebar, TopBar, MobileNav, Navigation
 ├── prisma/
-│   ├── schema.prisma           # Datenmodell
+│   ├── schema.prisma           # Datenmodell (~24 Modelle)
 │   ├── migrations/             # Versionierte Migrationen
 │   └── seed.ts                 # Synthetische Testdaten
-├── docs/
-│   ├── adr/                    # Architekturentscheidungen
-│   ├── architecture/           # Systemarchitektur
-│   ├── data-model/             # Datenmodell
-│   └── security/               # Sicherheitskonzept
-├── tests/
-│   ├── unit/                   # Vitest Unit-Tests
-│   ├── integration/            # Vitest Integrations-Tests
-│   └── e2e/                    # Playwright E2E-Tests
+├── src/__tests__/              # Vitest-Tests (RBAC, KI, Adapter)
+├── docs/                       # Architektur, Datenmodell, Sicherheit, ADRs
 ├── docker-compose.yml
 ├── Dockerfile
+├── docker-entrypoint.sh
 ├── .env.example
 ├── .gitignore
 └── README.md
@@ -164,33 +179,48 @@ praxisflow-RezAI/
 
 ## Umgebungsvariablen
 
-Kopiere `.env.example` nach `.env.local` und fülle alle Werte aus:
+Für den Betrieb ohne Docker: Kopiere `.env.example` nach `.env` und fülle die
+Werte aus:
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
 
-Alle verfügbaren Variablen sind in `.env.example` beschrieben. **Niemals `.env.local` committen!**
+Wichtigste Variablen:
+
+| Variable | Beschreibung |
+|---|---|
+| `DATABASE_URL` | PostgreSQL-Verbindung, z. B. `postgresql://praxisflow:passwort@localhost:5432/praxisflow_dev` |
+| `AUTH_SECRET` | Zufalls-Secret für Auth.js (`openssl rand -base64 32`) |
+| `AUTH_URL` | Basis-URL der App, lokal `http://localhost:3000` |
+| `PILOT_MODE` | `true` – aktiviert Pilot-Banner und Mock-Modus |
+
+Alle verfügbaren Variablen sind in `.env.example` dokumentiert. **Niemals `.env`
+oder Secrets committen!** (Beim Docker-Weg werden diese Werte direkt in
+`docker-compose.yml` gesetzt – eine `.env` ist dort nicht nötig.)
 
 ---
 
 ## Tests
 
 ```bash
-# Unit-Tests
-npm run test:unit
+# Alle Unit-/Integrationstests (Vitest) – RBAC, KI, Adapter
+npm test
 
-# Integrationstests
-npm run test:integration
+# Vitest im Watch-Modus
+npm run test:watch
 
-# E2E-Tests (Playwright)
+# End-to-End-Tests (Playwright)
 npm run test:e2e
 
-# Alle Tests
-npm run test
+# Typprüfung (TypeScript, strict)
+npm run typecheck
 
-# Testabdeckung
-npm run test:coverage
+# Linting
+npm run lint
+
+# Produktions-Build (inkl. prisma generate)
+npm run build
 ```
 
 ---
@@ -226,8 +256,8 @@ Siehe [`docs/security/SECURITY_CONCEPT.md`](docs/security/SECURITY_CONCEPT.md)
 | Phase | Inhalt | Status |
 |---|---|---|
 | Phase 1 | Architektur, Datenmodell, Dokumentation | ✅ Abgeschlossen |
-| Phase 2 | Kern-App, Pilot-Workflows, Testdaten | 🔒 Wartet auf Freigabe |
-| Phase 3 | Tests, Sicherheits-Audit | 🔒 Wartet auf Phase 2 |
+| Phase 2 | Kern-App, Pilot-Workflows, Testdaten | ✅ Abgeschlossen (Pilot v1) |
+| Phase 3 | Tests, Sicherheits-Audit | 🔒 Wartet auf Phase 2-Review |
 | Phase 4 | Pilot-Review, Abnahme | 🔒 Wartet auf Phase 3 |
 | Phase 5 | Produktionsvorbereitung, echte Integrationen | 🔒 Nach Echtbetrieb-Freigabe |
 

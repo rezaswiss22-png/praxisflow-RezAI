@@ -1,8 +1,15 @@
-version: '3.9'
-
 # ============================================================
-# PRAXISFLOW AI – Docker Compose (Lokale Entwicklung)
+# PRAXISFLOW AI – Docker Compose (Lokaler Pilot-Betrieb)
 # PILOT: Ausschliesslich synthetische Testdaten
+# ------------------------------------------------------------
+# Start:            docker compose up --build
+# Mit DB-Admin-UI:  docker compose --profile dev-tools up --build
+# App:              http://localhost:3000
+# Adminer:          http://localhost:8080   (Profil dev-tools)
+#
+# Die App wird aus dem Dockerfile (Next.js standalone) gebaut.
+# Beim Start werden automatisch die Migrationen angewendet und –
+# sofern RUN_SEED=true – synthetische Seed-Daten geladen.
 # ============================================================
 
 services:
@@ -16,19 +23,20 @@ services:
     environment:
       POSTGRES_DB: praxisflow_dev
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres_local_dev  # Nur lokal!
+      POSTGRES_PASSWORD: postgres_local_dev  # Nur lokal – kein echtes Secret!
+      TZ: Europe/Zurich
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d praxisflow_dev"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   # ----------------------------------------------------------
-  # Next.js App
+  # Next.js App (standalone Production-Build)
   # ----------------------------------------------------------
   app:
     build:
@@ -39,21 +47,24 @@ services:
     ports:
       - "3000:3000"
     environment:
+      # Verbindung zum db-Service (Compose-internes Netzwerk)
       DATABASE_URL: postgresql://postgres:postgres_local_dev@db:5432/praxisflow_dev
-      NODE_ENV: development
+      # Auth.js – nur lokaler Pilot-Wert, in Produktion ersetzen!
+      AUTH_SECRET: lokales-pilot-secret-bitte-ersetzen-0123456789abcdef
+      AUTH_URL: http://localhost:3000
+      AUTH_TRUST_HOST: "true"
+      NODE_ENV: production
       PILOT_MODE: "true"
-    env_file:
-      - .env.local
+      TZ: Europe/Zurich
+      # Beim ersten Start synthetische Daten laden:
+      RUN_SEED: "true"
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
 
   # ----------------------------------------------------------
-  # Adminer (Datenbank-Admin UI – NUR Entwicklung!)
+  # Adminer (Datenbank-Admin-UI – NUR Entwicklung!)
+  # Aktivieren mit: docker compose --profile dev-tools up
   # ----------------------------------------------------------
   adminer:
     image: adminer:latest
@@ -64,7 +75,7 @@ services:
     depends_on:
       - db
     profiles:
-      - dev-tools  # Nur mit: docker compose --profile dev-tools up
+      - dev-tools
 
 volumes:
   pgdata:
